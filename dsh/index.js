@@ -651,12 +651,12 @@ export function apply(ctx, config = {}) {
       scoped.tools.register({
         name: 'wechat_send',
         description:
-          '往微信发一条消息。微信屏幕小，只发结论、一两句；细节留在 DSH 这边。不指定 to 时：刚有人说过话就回那个号；没人说话就按时段挑——上班（8:30–18:00）发小号，其余时间发大号。',
+          '往微信发一条消息。只有绑定在本会话上的机器人能发——别的会话的号会直接被拒绝。微信屏幕小，只发结论、一两句；细节留在 DSH 这边。不指定 to 时：刚有人说过话就回那个号；没人说话就按时段挑——上班（8:30–18:00）发小号，其余时间发大号。',
         parameters: {
           type: 'object',
           properties: {
             text: { type: 'string', description: '要发送的文字，尽量 120 字以内' },
-            to: { type: 'string', description: '可选：发给哪个微信账号（一般不用填）' },
+            to: { type: 'string', description: '可选：指定哪个机器人（填名字或 id，必须是绑在本会话上的号）' },
           },
           required: ['text'],
           additionalProperties: false,
@@ -672,15 +672,34 @@ export function apply(ctx, config = {}) {
         },
         timeoutMs: 20000,
         isConcurrencySafe: () => false,
-        async execute(args) {
+        async execute(args, exec) {
           const text = String(args?.text ?? '').trim()
           if (!text) return { ok: false, message: 'text 不能为空' }
           if (!relay) return { ok: false, message: '微信中继还没起来（sessionController 未就绪）' }
-          const state = readState()
-          const bots = state.bots
-          if (!bots.length) return { ok: false, message: '还没有登录过微信机器人' }
 
-          // 挑号的三层规矩：
+          // 只认绑定：这个会话绑了哪些机器人，就只能从这些里挑——回执不会串到别人家的号上。
+          // 宿主把调用方会话放在 exec.agent.session.id 里；拿不到就宁可不发。
+          const callerSession = exec?.agent?.session?.id || ''
+          if (!callerSession) return { ok: false, message: '拿不到当前会话，为防串号这次不发' }
+
+          const state = readState()
+          let bots = (state.bots || []).filter((b) => b && b.id && b.sessionId === callerSession)
+          if (!bots.length) {
+            return { ok: false, message: '这个会话没绑微信机器人，发不出去（设置 → 微信通道里绑一个）' }
+          }
+
+          // 明确点了号：那号也必须绑在这个会话上
+          if (args?.to) {
+            const want = bots.find(
+              (b) => b.id === args.to || b.name === args.to || b.accountId === args.to,
+            )
+            if (!want) {
+              return { ok: false, message: `「${args.to}」不是绑在这个会话上的机器人，不能发` }
+            }
+            bots = [want]
+          }
+
+          // 挑号的三层规矩（只在「绑在本会话的号」里面挑）：
           //   ① 刚有人说过话（默认 20 分钟内）→ 回那条，别让那头等着
           //   ② 没人说话 → 按时段：上班找小号，其余找大号
           //   ③ 上面都不成 → 退回「上次记下的那个号」
@@ -696,8 +715,7 @@ export function apply(ctx, config = {}) {
             work === null ? null : byId(work ? settings.workBotId : settings.offBotId),
             work === null ? null : pickShiftBot(bots, work),
             byId(state.lastBotId),
-            bots.find((b) => b && b.sessionId && b.lastUserId) || null,
-            bots.find((b) => b && b.sessionId) || null,
+            bots.find((b) => b && b.lastUserId) || null,
             bots[0] || null,
           ].filter(Boolean)
           const why = fresh ? '回刚说话的那个' : work === null ? '默认号' : work ? '上班时段' : '下班时段'
@@ -707,7 +725,8 @@ export function apply(ctx, config = {}) {
           for (const bot of ordered) {
             if (tried.has(bot.id)) continue
             tried.add(bot.id)
-            const to = args?.to || (fresh && picked && bot.id === picked.botId ? picked.userId : undefined)
+            // 回复对象：刚说话的那个人；否则用这号上次记下的用户
+            const to = fresh && picked && bot.id === picked.botId ? picked.userId : bot.lastUserId || undefined
             try {
               await relay.sendText(bot, text, to)
               return { ok: true, message: `已发给「${bot.name}」（${why}）` }
