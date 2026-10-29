@@ -1,0 +1,45 @@
+{
+  "name": "dsh-wechat-channel",
+  "version": "0.0.1",
+  "description": "把微信接成 DSH 的一条通道：微信消息送进绑定的会话，会话里的话发回微信。记忆和人设只留在 DSH 这一份，微信侧不保存任何上下文。",
+  "type": "module",
+  "main": "./dsh/index.js",
+  "exports": {
+    ".": "./dsh/index.js",
+    "./client": "./dsh/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dsh",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "wechat",
+    "weixin",
+    "channel",
+    "bridge"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "qrcode-generator": "^2.0.4"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "license": "MIT"
+}

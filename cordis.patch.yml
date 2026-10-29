@@ -1,0 +1,5 @@
+# dsh-wechat-channel: 给 DSH 接一条微信通道。
+# 微信只当通道用：消息进来注入会话，回复显式发出去。
+- insert:
+    - id: dsh-wechat-channel
+      name: 'dsh-wechat-channel'
