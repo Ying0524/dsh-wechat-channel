@@ -684,6 +684,7 @@ export function apply(ctx, config = {}) {
 
           const state = readState()
           let bots = (state.bots || []).filter((b) => b && b.id && b.sessionId === callerSession)
+          console.log(`[dsh-wechat] wechat_send ← 会话 ${callerSession}，这个会话绑了 ${bots.length} 个号`)
           if (!bots.length) {
             return { ok: false, message: '这个会话没绑微信机器人，发不出去（设置 → 微信通道里绑一个）' }
           }
